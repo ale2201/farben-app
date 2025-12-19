@@ -8,11 +8,12 @@ st.title("🎨 Buscador de Fórmulas FARBEN")
 st.info("Escribe el nombre o código del color abajo. Haz clic en el resultado para ver la mezcla.")
 
 # Función para cargar y limpiar datos
+# Función para cargar y limpiar datos corregida
 @st.cache_data
 def load_data():
-    # Cargamos ambos archivos
-    df_cantidades = pd.read_csv('datos.csv')
-    df_nombres = pd.read_csv('bases.csv')
+    # Agregamos encoding='latin-1' para que no de error con los acentos
+    df_cantidades = pd.read_csv('datos.csv', encoding='latin-1')
+    df_nombres = pd.read_csv('bases.csv', encoding='latin-1')
     
     # Limpieza básica: quitar espacios en blanco de los nombres de columnas
     df_cantidades.columns = df_cantidades.columns.str.strip()
@@ -74,4 +75,5 @@ try:
 
 except Exception as e:
     st.error(f"Error técnico: {e}")
+
     st.info("Revisa que los archivos 'datos.csv' y 'bases.csv' estén correctamente subidos a GitHub.")
