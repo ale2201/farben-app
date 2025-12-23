@@ -1,98 +1,94 @@
 import streamlit as st
 import pandas as pd
 
-# Configuración para móviles
-st.set_page_config(page_title="FARBEN - Mezclas Exactas", layout="wide")
+# Configuración profesional
+st.set_page_config(page_title="FARBEN - Sistema de Mezclas", layout="wide")
 
-# 1. TU ID DE GOOGLE SHEETS
+# 1. TU ID DE HOJA (Verificado)
 ID_HOJA = "1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU" 
 
-# Enlaces de lectura directa para las dos pestañas
 URL_DATOS = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=DATOS"
 URL_BASES = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=BASES"
 
-@st.cache_data(ttl=5) # Se actualiza cada 5 segundos
+@st.cache_data(ttl=5)
 def load_data():
     try:
-        # Cargamos ambas hojas
-        df_q = pd.read_csv(URL_DATOS).fillna(0) # Cantidades
-        df_n = pd.read_csv(URL_BASES).fillna("") # Nombres de bases
+        # Cargamos los datos forzando que todo sea texto al inicio para no perder decimales
+        df_q = pd.read_csv(URL_DATOS, dtype=str).fillna("0")
+        df_n = pd.read_csv(URL_BASES, dtype=str).fillna("")
         return df_q, df_n
     except Exception as e:
-        st.error(f"⚠️ Error de conexión: {e}")
+        st.error(f"Error al conectar con la base de datos: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
 df_q, df_n = load_data()
 
-st.title("🎨 Calculadora FARBEN")
-st.subheader("Fórmulas combinadas en Litros (L)")
+st.title("🎨 Sistema FARBEN - Mezclas en Litros")
 
 # --- BUSCADOR ---
-busqueda = st.text_input("🔍 Escribe el código o marca:").strip().upper()
+busqueda = st.text_input("🔍 Busca por Código (ej: ZMT) o Nombre:").strip().upper()
 
 if busqueda and not df_q.empty:
-    # Buscamos en las dos primeras columnas (Código o Nombre)
-    mask = (df_q.iloc[:, 0].astype(str).str.contains(busqueda, na=False, case=False)) | \
-           (df_q.iloc[:, 1].astype(str).str.contains(busqueda, na=False, case=False))
+    # Buscamos en la Columna 0 (CÓDIGO) o Columna 1 (NOMBRE)
+    mask = (df_q.iloc[:, 0].str.contains(busqueda, na=False, case=False)) | \
+           (df_q.iloc[:, 1].str.contains(busqueda, na=False, case=False))
     
     resultados = df_q[mask]
 
     if not resultados.empty:
         for i, (idx, fila_datos) in enumerate(resultados.iterrows()):
-            # Paso A: Obtener el código de vinculación (Columna 0 de DATOS)
-            cod_vinculo = str(fila_datos.iloc[0]).strip()
+            # Usamos el CÓDIGO exacto (Columna 0) para unir las dos tablas
+            codigo_principal = str(fila_datos.iloc[0]).strip()
             nombre_color = str(fila_datos.iloc[1]).strip()
             
-            with st.expander(f"📌 {cod_vinculo} - {nombre_color}", expanded=True):
-                # Selector de litros
-                litros_a_preparar = st.number_input(
+            with st.expander(f"📍 {codigo_principal} - {nombre_color}", expanded=True):
+                # Selector de Litros
+                litros_total = st.number_input(
                     f"¿Cuántos Litros quieres preparar?", 
-                    0.01, 100.0, 1.0, 0.1, key=f"L_{idx}_{i}"
+                    min_value=0.01, max_value=100.0, value=1.0, step=0.1, 
+                    key=f"L_{idx}_{i}"
                 )
                 
-                st.write(f"**Mezcla final para {litros_a_preparar} Litro(s):**")
+                # Buscamos la fila de nombres en BASES que coincida exactamente con el CÓDIGO principal
+                fila_nombres = df_n[df_n.iloc[:, 0].str.strip() == codigo_principal]
                 
-                # Paso B: Buscar la fila de NOMBRES que coincida con ese código
-                fila_nombres = df_n[df_n.iloc[:, 0].astype(str).str.strip() == cod_vinculo]
+                st.write(f"**Fórmula para {litros_total} L:**")
                 
-                # Diseño de rejilla para celular
                 cols = st.columns(2)
                 item_idx = 0
                 
-                # Paso C: Recorrer las columnas desde la BASE 1 (Columna índice 3 en adelante)
+                # Las bases y cantidades SIEMPRE empiezan en la columna índice 3 (Base 1)
                 for col_idx in range(3, len(fila_datos)):
+                    # 1. Obtener cantidad y limpiar coma/punto
+                    dato_cantidad = str(fila_datos.iloc[col_idx]).replace(',', '.')
+                    
                     try:
-                        # 1. Sacar la cantidad (de la tabla DATOS)
-                        raw_cant = str(fila_datos.iloc[col_idx]).replace(',', '.')
-                        cant_base_1L = float(raw_cant)
+                        cant_base_1L = float(dato_cantidad)
+                    except ValueError:
+                        cant_base_1L = 0.0
+                    
+                    if cant_base_1L > 0:
+                        # 2. Obtener nombre real de la base desde la tabla BASES
+                        nombre_base_real = f"Base {col_idx-2}"
+                        if not fila_nombres.empty:
+                            nombre_base_real = str(fila_nombres.iloc[0].iloc[col_idx]).strip()
                         
-                        if cant_base_1L > 0:
-                            # 2. Sacar el nombre REAL (de la tabla BASES en la misma posición)
-                            # Si no lo encuentra, usamos un nombre genérico
-                            nombre_real = f"Base {col_idx-2}"
-                            if not fila_nombres.empty:
-                                val_n = fila_nombres.iloc[0].iloc[col_idx]
-                                if val_n != "" and val_n != 0:
-                                    nombre_real = str(val_n)
-                            
-                            # 3. Calcular la cantidad final
-                            total_final = round(cant_base_1L * litros_a_preparar, 3)
-                            
-                            # Mostrar en la web
-                            with cols[item_idx % 2]:
-                                st.metric(label=nombre_real, value=f"{total_final} L")
-                            item_idx += 1
-                    except:
-                        continue
+                        # Si por alguna razón el nombre está vacío en BASES
+                        if nombre_base_real == "" or nombre_base_real == "0":
+                            nombre_base_real = f"Base {col_idx-2}"
+
+                        # 3. Calcular cantidad final
+                        cantidad_final = round(cant_base_1L * litros_total, 3)
+                        
+                        with cols[item_idx % 2]:
+                            st.metric(label=nombre_base_real, value=f"{cantidad_final} L")
+                        item_idx += 1
                 
                 if item_idx == 0:
-                    st.info("Este color no tiene mezcla registrada.")
+                    st.warning("No se encontraron bases con cantidades para este código.")
     else:
-        st.warning("No se encontró el color.")
+        st.warning("No se encontró el color en la base de datos.")
 
-# --- SECCIÓN PARA AGREGAR DATOS ---
-st.sidebar.markdown("---")
-st.sidebar.write("### ➕ Agregar Datos")
-st.sidebar.info("Para que los cambios sean automáticos y se guarden para siempre:")
-st.sidebar.markdown(f"[👉 Abre tu Google Sheets aquí](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
-st.sidebar.write("1. Escribe el color y cantidades en la hoja **DATOS**.\n2. Escribe el color y los nombres en la hoja **BASES**.\n3. ¡La web se actualiza sola!")
+# Sidebar
+st.sidebar.markdown(f"### [📂 Abrir Google Sheets](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
+st.sidebar.info("Asegúrate de que 'ZMT' esté escrito igual en la columna 0 de ambas hojas (DATOS y BASES).")
