@@ -9,8 +9,8 @@ st.set_page_config(page_title="FARBEN - Control Litros", layout="wide")
 ID_HOJA = "1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU" 
 
 # Estas son las URLs para leer directamente de las pestañas
-URL_DATOS = f"https://docs.google.com/spreadsheets/d/{1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU}/gviz/tq?tqx=out:csv&sheet=DATOS"
-URL_BASES = f"https://docs.google.com/spreadsheets/d/{1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU}/gviz/tq?tqx=out:csv&sheet=BASES"
+URL_DATOS = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=DATOS"
+URL_BASES = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=BASES"
 
 @st.cache_data(ttl=10)
 def load_data():
@@ -86,3 +86,4 @@ elif opcion == "➕ Cómo agregar datos":
     3. Agrega la misma fila en la pestaña **BASES** (los nombres de las pinturas).
     4. ¡Listo! Vuelve a esta web y el nuevo color aparecerá en segundos.
     """)
+
