@@ -95,3 +95,4 @@ elif menu == "➕ Agregar Nuevo":
                 st.cache_data.clear()
             else:
                 st.error("Falta el código del color.")
+
