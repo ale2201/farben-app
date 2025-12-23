@@ -36,7 +36,7 @@ busqueda = st.text_input("🔍 Escribe el Código o Nombre (ej: TOYOTA, 042, NAV
 
 if busqueda and not df_q.empty:
     # Filtramos: Buscamos en 'CÓDIGO' o en 'NOMBRE DEL COLOR'
-    mask = (df_q['CÓDIGO'].astype(str).str.contains(busqueda, na=False)) | \
+    mask = (df_q['CODIGO'].astype(str).str.contains(busqueda, na=False)) | \
            (df_q['NOMBRE DEL COLOR'].astype(str).str.contains(busqueda, na=False))
     
     resultados = df_q[mask]
@@ -101,3 +101,4 @@ st.sidebar.markdown("---")
 st.sidebar.write("### 📂 Base de Datos")
 st.sidebar.markdown(f"[Abrir Google Sheets](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
 st.sidebar.info("Si añades un color nuevo en el Excel, espera 10 segundos y vuelve a buscar aquí.")
+
