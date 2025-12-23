@@ -2,19 +2,17 @@ import streamlit as st
 import pandas as pd
 
 # Configuración de la página
-st.set_page_config(page_title="FARBEN - Fórmulas de Pintura", layout="wide")
+st.set_page_config(page_title="Calculadora de Mezclas FARBEN", layout="wide")
 
-st.title("🎨 Buscador de Mezclas FARBEN")
-st.markdown("Busca un color y haz clic para ver las bases y cantidades.")
+st.title("🎨 Sistema de Mezclas FARBEN (Calculador)")
+st.markdown("Busca tu color y ajusta la cantidad para multiplicar la fórmula automáticamente.")
 
 @st.cache_data
 def load_data(file_name):
     try:
-        # Intentamos detectar el separador (sep=None hace que pandas lo adivine)
+        # Detectamos el separador y cargamos con latin-1 para evitar errores de acentos
         df = pd.read_csv(file_name, encoding='latin-1', sep=None, engine='python', on_bad_lines='skip')
-        # Limpiamos filas que estén totalmente vacías
         df = df.dropna(how='all')
-        # Quitamos espacios en los nombres de las columnas
         df.columns = df.columns.str.strip()
         return df
     except Exception as e:
@@ -26,56 +24,77 @@ df_q = load_data('datos.csv')
 df_n = load_data('bases.csv')
 
 if df_q is not None and df_n is not None:
-    # Buscador
-    query = st.text_input("🔍 Escribe el código, marca o color:", "").strip().upper()
+    # 1. Buscador Principal
+    query = st.text_input("🔍 Buscar código o marca:", "").strip().upper()
 
     if query:
-        # Buscamos en las columnas principales (CÓDIGO o NOMBRE)
-        # Ajustamos los nombres de columnas según tus archivos
-        col_busqueda = 'CÓDIGO' if 'CÓDIGO' in df_q.columns else df_q.columns[0]
-        col_nombre = 'NOMBRE DEL COLOR' if 'NOMBRE DEL COLOR' in df_q.columns else df_q.columns[1]
+        # Identificamos columnas (ajuste según tus archivos)
+        col_cod = 'CÓDIGO' if 'CÓDIGO' in df_q.columns else df_q.columns[0]
+        col_nom = 'NOMBRE DEL COLOR' if 'NOMBRE DEL COLOR' in df_q.columns else df_q.columns[1]
 
-        mask = (df_q[col_busqueda].astype(str).str.contains(query, case=False, na=False)) | \
-               (df_q[col_nombre].astype(str).str.contains(query, case=False, na=False))
+        mask = (df_q[col_cod].astype(str).str.contains(query, case=False, na=False)) | \
+               (df_q[col_nom].astype(str).str.contains(query, case=False, na=False))
         
         resultados = df_q[mask]
 
         if not resultados.empty:
-            st.write(f"Se encontraron **{len(resultados)}** coincidencias:")
+            st.write(f"Resultados encontrados: {len(resultados)}")
             
             for _, fila_datos in resultados.iterrows():
-                cod = fila_datos[col_busqueda]
-                nom = fila_datos[col_nombre]
+                codigo_actual = fila_datos[col_cod]
+                nombre_actual = fila_datos[col_nom]
                 
-                # Crear el acordeón (clic para ver)
-                with st.expander(f"📍 {cod} - {nom}"):
-                    st.write("**Detalles de la mezcla:**")
+                # Cada color es un "acordeón" desplegable
+                with st.expander(f"📍 {codigo_actual} - {nombre_actual}"):
                     
-                    # Buscamos los nombres de las bases en el otro archivo
-                    # En bases.csv la columna se llama 'COLOR'
-                    fila_nombres = df_n[df_n.iloc[:, 0] == cod]
+                    # --- AQUÍ ESTÁ LA MAGIA DEL MULTIPLICADOR ---
+                    st.markdown("#### ⚙️ Ajustar Cantidad")
+                    multiplicador = st.number_input(
+                        f"Multiplicar mezcla para {codigo_actual}:", 
+                        min_value=0.1, 
+                        value=1.0, 
+                        step=0.5,
+                        key=f"mult_{codigo_actual}" # Clave única para que no choque con otros
+                    )
+                    
+                    st.write(f"Mostrando cantidades multiplicadas por: **{multiplicador}**")
+                    st.write("---")
+                    
+                    # Buscamos nombres de las bases
+                    fila_nombres = df_n[df_n.iloc[:, 0] == codigo_actual]
                     
                     if not fila_nombres.empty:
                         fn = fila_nombres.iloc[0]
-                        
-                        # Mostrar en columnas bonitas
                         cols = st.columns(4)
                         idx_col = 0
                         
                         for i in range(1, 18):
                             col_name = f'BASE {i}'
                             if col_name in fila_datos:
-                                cant = fila_datos[col_name]
-                                nom_base = fn[col_name] if col_name in fn else f"Base {i}"
+                                val_original = fila_datos[col_name]
                                 
-                                # Solo mostrar si hay cantidad
-                                if pd.notna(cant) and str(cant).strip() not in ["0", "0.0", "", "nan"]:
-                                    with cols[idx_col % 4]:
-                                        st.metric(label=str(nom_base), value=str(cant))
-                                    idx_col += 1
+                                # Verificamos que sea un número para poder multiplicar
+                                try:
+                                    # Convertimos a número (flotante)
+                                    num_base = float(str(val_original).replace(',', '.'))
+                                    if num_base > 0:
+                                        nombre_base = fn[col_name] if col_name in fn else f"Base {i}"
+                                        
+                                        # CALCULAMOS EL NUEVO VALOR
+                                        resultado_final = round(num_base * multiplicador, 2)
+                                        
+                                        with cols[idx_col % 4]:
+                                            st.metric(
+                                                label=str(nombre_base), 
+                                                value=f"{resultado_final} gr",
+                                                delta=f"Original: {num_base}" if multiplicador != 1.0 else None
+                                            )
+                                        idx_col += 1
+                                except:
+                                    continue
                     else:
-                        st.warning("No se encontraron los nombres de las bases para este código.")
+                        st.warning("No se encontraron nombres de bases para este código.")
         else:
-            st.info("No se encontraron resultados.")
+            st.info("No se encontró el color.")
 else:
-    st.warning("Por favor, asegúrate de que 'datos.csv' y 'bases.csv' estén en el repositorio.")
+    st.error("No se pudieron cargar los archivos de datos.")
