@@ -1,97 +1,97 @@
 import streamlit as st
 import pandas as pd
-import unicodedata
 
-# Configuración de página
-st.set_page_config(page_title="FARBEN - Sistema Litros", layout="wide")
+# Configuración de página para móviles
+st.set_page_config(page_title="FARBEN Mix", layout="wide")
 
-# 1. CONFIGURACIÓN DEL LINK
+# 1. TU ID DE HOJA (Sacado de tu mensaje anterior)
 ID_HOJA = "1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU" 
+
+# Enlaces de lectura directa
 URL_DATOS = f"https://docs.google.com/spreadsheets/d/{ID_HOJA}/gviz/tq?tqx=out:csv&sheet=DATOS"
 URL_BASES = f"https://docs.google.com/spreadsheets/d/{ID_HOJA}/gviz/tq?tqx=out:csv&sheet=BASES"
 
-# Función para quitar acentos y dejar todo limpio
-def normalizar_texto(texto):
-    texto = str(texto).strip().upper()
-    return "".join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
-
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=5) # Se actualiza cada 5 segundos
 def load_data():
     try:
-        df_q = pd.read_csv(URL_DATOS)
-        df_n = pd.read_csv(URL_BASES)
-        
-        # Normalizamos los nombres de las columnas (CÓDIGO -> CODIGO)
-        df_q.columns = [normalizar_texto(c) for c in df_q.columns]
-        df_n.columns = [normalizar_texto(c) for c in df_n.columns]
-        
-        return df_q.fillna(0), df_n.fillna("")
+        # Cargamos los datos sin importar los nombres de las columnas
+        df_q = pd.read_csv(URL_DATOS).fillna(0)
+        df_n = pd.read_csv(URL_BASES).fillna("")
+        return df_q, df_n
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
+        st.error(f"⚠️ Error al conectar con Google Sheets: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
 df_q, df_n = load_data()
 
-st.title("🎨 Sistema FARBEN (Cálculo en Litros)")
+st.title("🎨 Sistema FARBEN - Litros")
 
-# 2. BUSCADOR FLEXIBLE
-busqueda = st.text_input("🔍 Buscar por Código o Nombre:").strip().upper()
+# --- BUSCADOR ---
+busqueda = st.text_input("🔍 Escribe el código o nombre del color:").strip().upper()
 
 if busqueda and not df_q.empty:
-    # Usamos los nombres normalizados: CODIGO y NOMBRE DEL COLOR
-    mask = (df_q['CODIGO'].astype(str).str.contains(busqueda, na=False)) | \
-           (df_q['NOMBRE DEL COLOR'].astype(str).str.contains(busqueda, na=False))
+    # Usamos iloc[:, 0] y iloc[:, 1] para evitar errores de nombres (CÓDIGO / NOMBRE)
+    mask = (df_q.iloc[:, 0].astype(str).str.contains(busqueda, na=False, case=False)) | \
+           (df_q.iloc[:, 1].astype(str).str.contains(busqueda, na=False, case=False))
     
     resultados = df_q[mask]
 
     if not resultados.empty:
         for i, (idx, fila_datos) in enumerate(resultados.iterrows()):
-            cod_v = str(fila_datos['CODIGO'])
-            nom_v = str(fila_datos['NOMBRE DEL COLOR'])
+            # Datos principales
+            cod_v = str(fila_datos.iloc[0]) # Primera columna (Código)
+            nom_v = str(fila_datos.iloc[1]) # Segunda columna (Nombre)
             
             with st.expander(f"📌 {cod_v} - {nom_v}", expanded=True):
-                # Selector de litros
+                # Entrada de Litros
                 litros_a_preparar = st.number_input(
-                    "¿Cuántos Litros (L) preparar?", 
-                    0.01, 100.0, 1.0, 0.1, key=f"L_{idx}_{i}"
+                    f"¿Cuántos Litros (L) preparar?", 
+                    0.05, 100.0, 1.0, 0.1, key=f"L_{idx}_{i}"
                 )
                 
-                st.write(f"**Mezcla final para {litros_a_preparar} Litro(s):**")
+                st.write(f"**Mezcla necesaria para {litros_a_preparar} Litro(s):**")
+                st.write("---")
                 
-                # Buscamos en la otra hoja usando 'COLOR' (normalizado de CÓDIGO)
-                fila_nombres = df_n[df_n['COLOR'].astype(str) == cod_v]
+                # Buscamos en la otra hoja (BASES) usando el código
+                fila_nombres = df_n[df_n.iloc[:, 0].astype(str) == cod_v]
                 
+                # Diseño en 2 columnas para el celular
                 cols = st.columns(2)
-                item_idx = 0
+                contador_bases = 0
                 
-                # Recorremos las bases del 1 al 17
-                for j in range(1, 18):
-                    col_b = f"BASE {j}"
-                    if col_b in df_q.columns:
-                        try:
-                            # Convertimos cantidad a número (soporta 0.5 y 0,5)
-                            valor_celda = str(fila_datos[col_b]).replace(',', '.')
-                            cant_1L = float(valor_celda)
-                        except:
-                            cant_1L = 0
+                # Las bases empiezan en la columna 3 (índice 3 en adelante)
+                # Recorremos todas las columnas de bases que existan
+                for col_idx in range(3, len(df_q.columns)):
+                    try:
+                        # Valor de la base en el Excel
+                        valor_excel = str(fila_datos.iloc[col_idx]).replace(',', '.')
+                        cant_1L = float(valor_excel)
                         
                         if cant_1L > 0:
-                            # Nombre de la base desde la hoja BASES
-                            nombre_pintura = f"Base {j}"
-                            if not fila_nombres.empty and col_b in df_n.columns:
-                                val_n = fila_nombres.iloc[0][col_b]
+                            # Buscamos el nombre de la base en la misma posición en la otra hoja
+                            nombre_pintura = f"Base {col_idx-2}"
+                            if not fila_nombres.empty:
+                                val_n = fila_nombres.iloc[0].iloc[col_idx]
                                 if val_n != "" and val_n != 0:
                                     nombre_pintura = val_n
                             
-                            # CÁLCULO: Cantidad x Litros elegidos
-                            total_calculado = round(cant_1L * litros_a_preparar, 3)
+                            # CÁLCULO FINAL: Cantidad x Litros
+                            total_litros = round(cant_1L * litros_a_preparar, 3)
                             
-                            with cols[item_idx % 2]:
-                                st.metric(label=f"{nombre_pintura}", value=f"{total_calculado} L")
-                            item_idx += 1
+                            with cols[contador_bases % 2]:
+                                st.metric(label=f"{nombre_pintura}", value=f"{total_litros} L")
+                            contador_bases += 1
+                    except:
+                        continue
     else:
-        st.warning("No se encontró el color.")
+        st.warning("No se encontró ningún resultado.")
 
-# Sidebar con ayuda
+# --- BARRA LATERAL (PARA AGREGAR DATOS) ---
+st.sidebar.title("Configuración")
 st.sidebar.markdown(f"### [📂 Abrir Google Sheets](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
-st.sidebar.info("Si no ves datos, verifica que las columnas en tu Excel se llamen BASE 1, BASE 2, etc.")
+st.sidebar.info("""
+**Para que el guardado sea automático:**
+1. Haz clic en el link de arriba.
+2. Agrega el nuevo color al final de la lista.
+3. La web se actualizará sola en 5 segundos.
+""")
