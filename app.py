@@ -1,10 +1,10 @@
 import streamlit as st
 import pandas as pd
 
-# Configuración de página
+# Configuración visual para móvil
 st.set_page_config(page_title="FARBEN - Sistema Litros", layout="wide")
 
-# CONFIGURACIÓN
+# 1. TU ID DE GOOGLE SHEETS
 ID_HOJA = "1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU" 
 
 URL_DATOS = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=DATOS"
@@ -13,71 +13,91 @@ URL_BASES = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9
 @st.cache_data(ttl=10)
 def load_data():
     try:
-        df_q = pd.read_csv(URL_DATOS).fillna(0)
-        df_n = pd.read_csv(URL_BASES).fillna("")
-        df_q.columns = df_q.columns.str.strip().str.upper()
-        df_n.columns = df_n.columns.str.strip().str.upper()
-        return df_q, df_n
+        # Cargamos los datos
+        df_q = pd.read_csv(URL_DATOS)
+        df_n = pd.read_csv(URL_BASES)
+        
+        # Limpiamos nombres de columnas (quitar espacios y poner mayúsculas)
+        df_q.columns = [str(c).strip().upper() for c in df_q.columns]
+        df_n.columns = [str(c).strip().upper() for c in df_n.columns]
+        
+        return df_q.fillna(0), df_n.fillna("")
     except Exception as e:
-        st.error(f"Error al conectar: {e}")
+        st.error(f"Error al conectar con Google: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
 df_q, df_n = load_data()
 
-st.title("🎨 Calculadora FARBEN (Litros)")
+st.title("🎨 Sistema de Mezclas FARBEN")
+st.write("Cálculo automático en **Litros (L)**")
 
-busqueda = st.text_input("Buscar código o nombre:").strip().upper()
+# 2. BUSCADOR
+busqueda = st.text_input("🔍 Escribe el Código o Nombre (ej: TOYOTA, 042, NAVAL):").strip().upper()
 
 if busqueda and not df_q.empty:
-    # Buscamos coincidencias
-    mask = (df_q.iloc[:, 0].astype(str).str.contains(busqueda)) | \
-           (df_q.iloc[:, 1].astype(str).str.contains(busqueda))
-    res = df_q[mask]
+    # Filtramos: Buscamos en 'CÓDIGO' o en 'NOMBRE DEL COLOR'
+    mask = (df_q['CÓDIGO'].astype(str).str.contains(busqueda, na=False)) | \
+           (df_q['NOMBRE DEL COLOR'].astype(str).str.contains(busqueda, na=False))
+    
+    resultados = df_q[mask]
 
-    if not res.empty:
-        # Usamos 'enumerate' para tener un número de fila (i) y evitar llaves duplicadas
-        for i, (idx_fila, fila) in enumerate(res.iterrows()):
-            cod = fila.iloc[0]
-            nom = fila.iloc[1]
+    if not resultados.empty:
+        # i es el contador para evitar el error de Duplicate Key
+        for i, (idx, fila_datos) in enumerate(resultados.iterrows()):
+            cod_vinculo = str(fila_datos['CÓDIGO'])
+            nombre_color = str(fila_datos['NOMBRE DEL COLOR'])
             
-            # El secreto está en: key=f"L_{cod}_{i}"
-            with st.expander(f"📌 {cod} - {nom}", expanded=True):
-                litros_total = st.number_input(
-                    f"¿Cuántos Litros (L) preparar?", 
-                    min_value=0.1, 
-                    max_value=100.0, 
-                    value=1.0, 
-                    step=0.1, 
-                    key=f"L_{cod}_{i}" # <--- ESTO ARREGLA EL ERROR
+            with st.expander(f"📍 {cod_vinculo} - {nombre_color}", expanded=True):
+                # 3. SELECTOR DE LITROS
+                litros_a_preparar = st.number_input(
+                    f"¿Cuántos Litros quieres preparar?", 
+                    min_value=0.01, max_value=100.0, value=1.0, step=0.1, 
+                    key=f"input_{idx}_{i}"
                 )
                 
-                st.write(f"**Mezcla necesaria para {litros_total} L:**")
+                st.write(f"**Fórmula final para {litros_a_preparar} Litro(s):**")
                 
-                # Buscar nombres de bases
-                fila_n = df_n[df_n.iloc[:, 0] == cod]
+                # Buscamos los nombres de las bases en la hoja BASES usando la columna COLOR
+                fila_nombres = df_n[df_n['COLOR'].astype(str) == cod_vinculo]
+                
+                # Mostramos en 2 columnas para que en el celular se vea una debajo de otra
                 cols = st.columns(2)
-                idx_col = 0
+                item_idx = 0
                 
+                # Recorremos de BASE 1 a BASE 17
                 for j in range(1, 18):
-                    col_b = f"BASE {j}"
-                    if col_b in fila:
+                    col_base = f"BASE {j}"
+                    
+                    if col_base in fila_datos:
+                        # Convertir cantidad de la celda a número
                         try:
-                            # Convertimos a número y calculamos
-                            cant_base_1L = float(str(fila[col_b]).replace(',', '.'))
+                            cant_original = float(str(fila_datos[col_base]).replace(',', '.'))
                         except:
-                            cant_base_1L = 0
+                            cant_original = 0
+                        
+                        if cant_original > 0:
+                            # Buscamos el nombre de la base
+                            nombre_de_base = f"Base {j}" # Por defecto
+                            if not fila_nombres.empty and col_base in fila_nombres.columns:
+                                val_n = fila_nombres.iloc[0][col_base]
+                                if val_n != "" and val_n != 0:
+                                    nombre_de_base = val_n
                             
-                        if cant_base_1L > 0:
-                            nom_base = fila_n.iloc[0][col_b] if not fila_n.empty else f"B{j}"
-                            total_litros = round(cant_base_1L * litros_total, 3)
-                            with cols[idx_col % 2]:
-                                st.metric(label=f"{nom_base}", value=f"{total_litros} L")
-                            idx_col += 1
+                            # CÁLCULO EN LITROS
+                            resultado_litros = round(cant_original * litros_a_preparar, 3)
+                            
+                            with cols[item_idx % 2]:
+                                # Diseño tipo tarjeta para celular
+                                st.metric(label=f"{nombre_de_base}", value=f"{resultado_litros} L")
+                            item_idx += 1
+                
+                if item_idx == 0:
+                    st.info("Este color no tiene cantidades registradas.")
     else:
-        st.warning("No se encontró el color.")
+        st.warning("No se encontró ningún color con ese nombre o código.")
 
-# Sidebar con link directo
+# Barra lateral informativa
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"### [📂 Abrir Google Sheets](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
-st.sidebar.info("Si agregas un color en el Excel, espera 10 segundos y busca aquí.")
-
+st.sidebar.write("### 📂 Base de Datos")
+st.sidebar.markdown(f"[Abrir Google Sheets](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
+st.sidebar.info("Si añades un color nuevo en el Excel, espera 10 segundos y vuelve a buscar aquí.")
