@@ -2,88 +2,81 @@ import streamlit as st
 import pandas as pd
 
 # Configuración de página
-st.set_page_config(page_title="FARBEN - Control Litros", layout="wide")
+st.set_page_config(page_title="FARBEN - Sistema Litros", layout="wide")
 
-# --- CONFIGURACIÓN DE TU HOJA ---
-# REEMPLAZA ESTO CON TU ID DE HOJA
+# CONFIGURACIÓN
 ID_HOJA = "1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU" 
 
-# Estas son las URLs para leer directamente de las pestañas
-URL_DATOS = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=DATOS"
-URL_BASES = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=BASES"
+URL_DATOS = f"https://docs.google.com/spreadsheets/d/{ID_HOJA}/gviz/tq?tqx=out:csv&sheet=DATOS"
+URL_BASES = f"https://docs.google.com/spreadsheets/d/{ID_HOJA}/gviz/tq?tqx=out:csv&sheet=BASES"
 
 @st.cache_data(ttl=10)
 def load_data():
     try:
-        # Cargamos los datos ignorando errores de codificación
         df_q = pd.read_csv(URL_DATOS).fillna(0)
         df_n = pd.read_csv(URL_BASES).fillna("")
-        # Limpiar espacios en los nombres
         df_q.columns = df_q.columns.str.strip().str.upper()
         df_n.columns = df_n.columns.str.strip().str.upper()
         return df_q, df_n
     except Exception as e:
-        st.error(f"⚠️ Error al conectar: {e}")
+        st.error(f"Error al conectar: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
 df_q, df_n = load_data()
 
-# --- MENÚ ---
-st.sidebar.title("🛠️ FARBEN App")
-opcion = st.sidebar.radio("Menú:", ["🔍 Buscador (LITROS)", "➕ Cómo agregar datos"])
+st.title("🎨 Calculadora FARBEN (Litros)")
 
-if opcion == "🔍 Buscador (LITROS)":
-    st.title("🎨 Calculadora de Mezclas (L)")
-    busqueda = st.text_input("Código o Nombre del color:").strip().upper()
+busqueda = st.text_input("Buscar código o nombre:").strip().upper()
 
-    if busqueda and not df_q.empty:
-        # Buscar en la primera o segunda columna
-        mask = (df_q.iloc[:, 0].astype(str).str.contains(busqueda)) | \
-               (df_q.iloc[:, 1].astype(str).str.contains(busqueda))
-        res = df_q[mask]
+if busqueda and not df_q.empty:
+    # Buscamos coincidencias
+    mask = (df_q.iloc[:, 0].astype(str).str.contains(busqueda)) | \
+           (df_q.iloc[:, 1].astype(str).str.contains(busqueda))
+    res = df_q[mask]
 
-        if not res.empty:
-            for _, fila in res.iterrows():
-                cod = fila.iloc[0]
-                nom = fila.iloc[1]
+    if not res.empty:
+        # Usamos 'enumerate' para tener un número de fila (i) y evitar llaves duplicadas
+        for i, (idx_fila, fila) in enumerate(res.iterrows()):
+            cod = fila.iloc[0]
+            nom = fila.iloc[1]
+            
+            # El secreto está en: key=f"L_{cod}_{i}"
+            with st.expander(f"📌 {cod} - {nom}", expanded=True):
+                litros_total = st.number_input(
+                    f"¿Cuántos Litros (L) preparar?", 
+                    min_value=0.1, 
+                    max_value=100.0, 
+                    value=1.0, 
+                    step=0.1, 
+                    key=f"L_{cod}_{i}" # <--- ESTO ARREGLA EL ERROR
+                )
                 
-                with st.expander(f"📌 {cod} - {nom}", expanded=True):
-                    # PREGUNTA POR LITROS
-                    litros = st.number_input(f"¿Cuántos Litros (L) preparar?", 0.1, 100.0, 1.0, 0.5, key=f"L_{cod}")
-                    
-                    st.write(f"**Mezcla final para {litros} Litro(s):**")
-                    
-                    # Buscar nombres de bases
-                    fila_n = df_n[df_n.iloc[:, 0] == cod]
-                    
-                    cols = st.columns(2)
-                    idx = 0
-                    # Recorrer las columnas de bases
-                    for i in range(1, 18):
-                        col_b = f"BASE {i}"
-                        if col_b in fila:
-                            cant_base = float(str(fila[col_b]).replace(',', '.'))
-                            if cant_base > 0:
-                                nom_base = fila_n.iloc[0][col_b] if not fila_n.empty else f"B{i}"
-                                # CÁLCULO: Base * Litros
-                                total = round(cant_base * litros, 3)
-                                with cols[idx % 2]:
-                                    st.metric(label=f"{nom_base}", value=f"{total} L")
-                                idx += 1
-        else:
-            st.warning("No se encontró ese código.")
+                st.write(f"**Mezcla necesaria para {litros_total} L:**")
+                
+                # Buscar nombres de bases
+                fila_n = df_n[df_n.iloc[:, 0] == cod]
+                cols = st.columns(2)
+                idx_col = 0
+                
+                for j in range(1, 18):
+                    col_b = f"BASE {j}"
+                    if col_b in fila:
+                        try:
+                            # Convertimos a número y calculamos
+                            cant_base_1L = float(str(fila[col_b]).replace(',', '.'))
+                        except:
+                            cant_base_1L = 0
+                            
+                        if cant_base_1L > 0:
+                            nom_base = fila_n.iloc[0][col_b] if not fila_n.empty else f"B{j}"
+                            total_litros = round(cant_base_1L * litros_total, 3)
+                            with cols[idx_col % 2]:
+                                st.metric(label=f"{nom_base}", value=f"{total_litros} L")
+                            idx_col += 1
+    else:
+        st.warning("No se encontró el color.")
 
-elif opcion == "➕ Cómo agregar datos":
-    st.title("📝 Agregar Nuevos Colores")
-    st.info("Para que el guardado sea **AUTOMÁTICO y GRATIS**, la mejor forma es editar tu Google Sheet desde el celular.")
-    
-    link_directo = f"https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit"
-    st.markdown(f"### [👉 Haz clic aquí para abrir tu DB_FARBEN]({link_directo})")
-    
-    st.write("""
-    1. Abre el enlace arriba desde tu celular o PC.
-    2. Agrega la nueva fila en la pestaña **DATOS** (las cantidades).
-    3. Agrega la misma fila en la pestaña **BASES** (los nombres de las pinturas).
-    4. ¡Listo! Vuelve a esta web y el nuevo color aparecerá en segundos.
-    """)
-
+# Sidebar con link directo
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"### [📂 Abrir Google Sheets](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
+st.sidebar.info("Si agregas un color en el Excel, espera 10 segundos y busca aquí.")
