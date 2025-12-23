@@ -1,135 +1,97 @@
 import streamlit as st
+from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Configuración para móviles y escritorio
-st.set_page_config(page_title="FARBEN Mix", layout="wide")
+# Configuración de página
+st.set_page_config(page_title="FARBEN - Sistema Litros", layout="wide")
 
-# Estilos visuales para que las bases se vean como etiquetas en el celular
-st.markdown("""
-    <style>
-    .metric-container { background-color: #f0f2f6; padding: 10px; border-radius: 10px; margin: 5px 0; }
-    .stMetric { border-left: 5px solid #ff4b4b; padding-left: 10px; }
-    </style>
-    """, unsafe_allow_html=True)
+# URL de tu Google Sheet (REEMPLAZA ESTO CON TU LINK)
+url = "https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/edit?usp=sharing"
 
-@st.cache_data
-def load_data(file_name):
-    try:
-        df = pd.read_csv(file_name, encoding='latin-1', sep=None, engine='python')
-        df = df.dropna(how='all').fillna('')
-        df.columns = df.columns.str.strip()
-        return df
-    except:
-        return pd.DataFrame()
+# Conexión con Google Sheets
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Mantener los datos en la memoria de la sesión
-if 'df_q' not in st.session_state:
-    st.session_state.df_q = load_data('datos.csv')
-if 'df_n' not in st.session_state:
-    st.session_state.df_n = load_data('bases.csv')
+@st.cache_data(ttl=5) # Se actualiza cada 5 segundos
+def load_data():
+    df_q = conn.read(spreadsheet=url, worksheet="DATOS")
+    df_n = conn.read(spreadsheet=url, worksheet="BASES")
+    return df_q.fillna(0), df_n.fillna("")
 
-# --- MENÚ LATERAL ---
-st.sidebar.title("🎨 Menú FARBEN")
-opcion = st.sidebar.radio("Ir a:", ["🔍 Buscar Fórmula", "➕ Crear Nueva Fórmula"])
+df_q, df_n = load_data()
 
-# --- OPCIÓN 1: BUSCADOR ---
-if opcion == "🔍 Buscar Fórmula":
-    st.title("Buscador de Mezclas")
-    busqueda = st.text_input("Escribe el código o nombre del color:", "").strip().upper()
+# --- MENÚ ---
+menu = st.sidebar.radio("Menú", ["🔍 Buscador (L)", "➕ Agregar Nuevo"])
 
-    if busqueda:
-        df_q = st.session_state.df_q
-        # Buscamos en las dos primeras columnas
-        mask = (df_q.iloc[:, 0].astype(str).str.contains(busqueda)) | (df_q.iloc[:, 1].astype(str).str.contains(busqueda))
-        resultados = df_q[mask]
+if menu == "🔍 Buscador (L)":
+    st.title("🎨 Buscador en Litros")
+    query = st.text_input("Buscar código o color:").strip().upper()
 
-        if not resultados.empty:
-            for _, fila in resultados.iterrows():
-                codigo = fila.iloc[0]
-                nombre = fila.iloc[1]
+    if query:
+        # Buscador flexible
+        mask = (df_q.iloc[:, 0].astype(str).str.contains(query)) | (df_q.iloc[:, 1].astype(str).str.contains(query))
+        res = df_q[mask]
+
+        for _, fila in res.iterrows():
+            with st.expander(f"📍 {fila.iloc[0]} - {fila.iloc[1]}"):
+                # El multiplicador ahora representa CUÁNTOS LITROS quieres preparar
+                cant_litros = st.number_input(f"¿Cuántos Litros quieres preparar?", 0.1, 100.0, 1.0, 0.5, key=f"L_{fila.iloc[0]}")
                 
-                with st.expander(f"📍 {codigo} - {nombre}"):
-                    # Multiplicador para cantidades
-                    mult = st.number_input("Multiplicar mezcla por:", 0.1, 20.0, 1.0, 0.5, key=f"btn_{codigo}")
+                st.write(f"### Mezcla para {cant_litros} L")
+                
+                # Buscamos nombres de bases
+                fila_n = df_n[df_n.iloc[:, 0] == fila.iloc[0]]
+                
+                cols = st.columns(2)
+                idx = 0
+                for i in range(1, 18):
+                    col_name = f"BASE {i}"
+                    val_base = float(str(fila[col_name]).replace(',', '.'))
                     
-                    # Traer nombres de bases desde bases.csv
-                    df_n = st.session_state.df_n
-                    fila_n = df_n[df_n.iloc[:, 0] == codigo]
-                    
-                    st.write("### Composición:")
-                    # En celulares usaremos 2 columnas, en PC se verá más amplio
-                    cols = st.columns([1, 1])
-                    idx_visual = 0
-                    
-                    for i in range(1, 18):
-                        col_name = f"BASE {i}"
-                        cant_orig = str(fila[col_name]).replace(',', '.')
+                    if val_base > 0:
+                        nombre_b = fila_n.iloc[0][col_name] if not fila_n.empty else f"Base {i}"
+                        # CÁLCULO EN LITROS
+                        resultado = round(val_base * cant_litros, 3)
                         
-                        try:
-                            val_float = float(cant_orig) if cant_orig != '' else 0
-                            if val_float > 0:
-                                nombre_base = fila_n.iloc[0][col_name] if not fila_n.empty else f"Base {i}"
-                                with cols[idx_visual % 2]:
-                                    st.metric(label=str(nombre_base), value=f"{round(val_float * mult, 2)} g")
-                                idx_visual += 1
-                        except: continue
-        else:
-            st.warning("No se encontró el color.")
+                        with cols[idx % 2]:
+                            st.metric(label=f"{nombre_b}", value=f"{resultado} L")
+                        idx += 1
 
-# --- OPCIÓN 2: AGREGAR NUEVO ---
-elif opcion == "➕ Crear Nueva Fórmula":
-    st.title("Nueva Fórmula")
+elif menu == "➕ Agregar Nuevo":
+    st.title("📝 Agregar y Guardar Automático")
     
-    # PASO 1: DATOS GENERALES
-    st.subheader("1️⃣ Datos Generales")
-    col_a, col_b, col_c = st.columns(3)
-    nuevo_cod = col_a.text_input("Código del Color")
-    nuevo_nom = col_b.text_input("Nombre / Marca")
-    nuevo_tipo = col_c.selectbox("Tipo de Pintura", ["DUCO", "PU", "POLIURETANO"])
-
-    st.write("---")
-    
-    # PASO 2: BASES Y CANTIDADES
-    st.subheader("2️⃣ Mezcla (Bases y Gramos)")
-    st.info("Escribe el nombre de la base y su peso al lado.")
-
-    nuevos_pesos = {}
-    nuevos_nombres_base = {}
-
-    # Generamos 10 filas para empezar (puedes llenar solo las que necesites)
-    for i in range(1, 11):
-        c1, c2 = st.columns([2, 1])
-        n_b = c1.text_input(f"Nombre Base {i}", key=f"nb_{i}", placeholder="Ej: BLANCO, NEGRO...")
-        c_b = c2.number_input(f"Gramos {i}", 0.0, 5000.0, 0.0, step=0.1, key=f"cb_{i}")
+    with st.form("form_registro"):
+        st.subheader("1. Datos del Color")
+        c1, c2 = st.columns(2)
+        nuevo_cod = c1.text_input("Código")
+        nuevo_nom = c2.text_input("Nombre")
         
-        nuevos_nombres_base[f"BASE {i}"] = n_b
-        nuevos_pesos[f"BASE {i}"] = c_b
+        st.subheader("2. Bases y Cantidades (por cada 1 Litro)")
+        st.info("Ingresa la cantidad base para 1 Litro. El sistema calculará el resto.")
+        
+        nuevos_datos = {}
+        nuevos_nombres = {}
+        
+        for i in range(1, 11): # Primeras 10 bases
+            col1, col2 = st.columns([2, 1])
+            nb = col1.text_input(f"Nombre Base {i}", key=f"nb_{i}")
+            cb = col2.number_input(f"Litros {i}", 0.0, 10.0, 0.0, format="%.3f", key=f"cb_{i}")
+            nuevos_nombres[f"BASE {i}"] = nb
+            nuevos_datos[f"BASE {i}"] = cb
 
-    # Botón para procesar
-    if st.button("💾 Guardar Fórmula en la Lista"):
-        if nuevo_cod and nuevo_nom:
-            # Preparar fila para DATOS.CSV
-            fila_d = {st.session_state.df_q.columns[0]: nuevo_cod, st.session_state.df_q.columns[1]: nuevo_nom, st.session_state.df_q.columns[2]: nuevo_tipo}
-            fila_d.update(nuevos_pesos)
-            
-            # Preparar fila para BASES.CSV
-            fila_b = {st.session_state.df_n.columns[0]: nuevo_cod, st.session_state.df_n.columns[1]: nuevo_nom, st.session_state.df_n.columns[2]: nuevo_tipo}
-            fila_b.update(nuevos_nombres_base)
-            
-            # Añadir a la sesión actual
-            st.session_state.df_q = pd.concat([st.session_state.df_q, pd.DataFrame([fila_d])], ignore_index=True)
-            st.session_state.df_n = pd.concat([st.session_state.df_n, pd.DataFrame([fila_b])], ignore_index=True)
-            
-            st.success(f"¡Color {nuevo_cod} agregado temporalmente!")
-        else:
-            st.error("Por favor rellena el Código y el Nombre.")
-
-    st.write("---")
-    st.subheader("📥 Finalizar y Descargar")
-    st.write("Para que los cambios sean permanentes, descarga los archivos y súbelos a tu GitHub.")
-    
-    col_d1, col_d2 = st.columns(2)
-    with col_d1:
-        st.download_button("Descargar DATOS.CSV", st.session_state.df_q.to_csv(index=False).encode('latin-1'), "datos.csv", "text/csv")
-    with col_d2:
-        st.download_button("Descargar BASES.CSV", st.session_state.df_n.to_csv(index=False).encode('latin-1'), "bases.csv", "text/csv")
+        if st.form_submit_button("💾 GUARDAR TODO AUTOMÁTICAMENTE"):
+            if nuevo_cod:
+                # Crear nuevas filas
+                new_q_row = pd.DataFrame([{**{df_q.columns[0]: nuevo_cod, df_q.columns[1]: nuevo_nom}, **nuevos_datos}])
+                new_n_row = pd.DataFrame([{**{df_n.columns[0]: nuevo_cod, df_n.columns[1]: nuevo_nom}, **nuevos_nombres}])
+                
+                # Unir y Guardar en Google Sheets
+                df_q_updated = pd.concat([df_q, new_q_row], ignore_index=True)
+                df_n_updated = pd.concat([df_n, new_n_row], ignore_index=True)
+                
+                conn.update(spreadsheet=url, worksheet="DATOS", data=df_q_updated)
+                conn.update(spreadsheet=url, worksheet="BASES", data=df_n_updated)
+                
+                st.success("✅ ¡Guardado en Google Sheets con éxito! Ya puedes buscarlo.")
+                st.cache_data.clear()
+            else:
+                st.error("Falta el código del color.")
