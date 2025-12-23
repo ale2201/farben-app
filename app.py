@@ -7,8 +7,8 @@ st.set_page_config(page_title="FARBEN - Sistema Litros", layout="wide")
 # CONFIGURACIÓN
 ID_HOJA = "1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU" 
 
-URL_DATOS = f"https://docs.google.com/spreadsheets/d/{ID_HOJA}/gviz/tq?tqx=out:csv&sheet=DATOS"
-URL_BASES = f"https://docs.google.com/spreadsheets/d/{ID_HOJA}/gviz/tq?tqx=out:csv&sheet=BASES"
+URL_DATOS = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=DATOS"
+URL_BASES = f"https://docs.google.com/spreadsheets/d/1dCGpVhDwUO-fcBo33GcjrzZ0T9gsnT4yQjr9EibUkVU/gviz/tq?tqx=out:csv&sheet=BASES"
 
 @st.cache_data(ttl=10)
 def load_data():
@@ -80,3 +80,4 @@ if busqueda and not df_q.empty:
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"### [📂 Abrir Google Sheets](https://docs.google.com/spreadsheets/d/{ID_HOJA}/edit)")
 st.sidebar.info("Si agregas un color en el Excel, espera 10 segundos y busca aquí.")
+
